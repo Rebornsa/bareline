@@ -1,0 +1,43 @@
+IDI_SYSMON ICON "SysMon.ico"
+
+#include <windows.h>
+#include "resource.h"
+
+IDR_TRAY_MENU MENU
+BEGIN
+    POPUP "Tray"
+    BEGIN
+        MENUITEM "Show/Hide",             IDM_SHOWHIDE
+        MENUITEM SEPARATOR
+        MENUITEM "Lock Position",          IDM_LOCK
+        MENUITEM "Reset Position",         IDM_RESETPOS
+        MENUITEM SEPARATOR
+        MENUITEM "Refresh: 1s",            IDM_REFRESH_1S
+        MENUITEM "Refresh: 0.5s",          IDM_REFRESH_500
+        MENUITEM "Refresh: 0.25s",         IDM_REFRESH_250
+        MENUITEM SEPARATOR
+        MENUITEM "Opacity: 60%",           IDM_OPACITY_60
+        MENUITEM "Opacity: 70%",           IDM_OPACITY_70
+        MENUITEM "Opacity: 80%",           IDM_OPACITY_80
+        MENUITEM SEPARATOR
+        MENUITEM "Font Size: 9pt",           IDM_FONT_9
+        MENUITEM "Font Size: 12pt",          IDM_FONT_12
+        MENUITEM "Font Size: 16pt",          IDM_FONT_16
+        MENUITEM "Font Size: Custom...",     IDM_FONT_CUSTOM
+        MENUITEM SEPARATOR
+        MENUITEM "Auto-start with Windows", IDM_AUTOSTART
+        MENUITEM SEPARATOR
+        MENUITEM "Exit",                   IDM_EXIT
+    END
+END
+
+IDD_FONT_DIALOG DIALOGEX 0, 0, 200, 65
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Custom Font Size"
+FONT 9, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Font Size (pt):", -1, 10, 10, 60, 12
+    EDITTEXT        IDC_FONT_EDIT, 75, 8, 50, 14, ES_NUMBER | WS_BORDER | WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 80, 38, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 140, 38, 50, 14
+END

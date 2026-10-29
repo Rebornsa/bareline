@@ -1,0 +1,37 @@
+# Build artifacts
+build/
+out/
+__pycache__/
+*.pyc
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# One-off development scripts from early prototyping (kept locally, not part of the project)
+fix.py
+fix2.py
+fix3.py
+fix_final.py
+fix_ioctl.py
+fix_names.py
+fix_pdh.py
+restore.py
+rewrite_io.py
+sysmon.py
+
+# Early prototype / probe sources
+test.cpp
+test_a.cpp
+test_ioctl.cpp
+test_pdh.cpp
+tsta.cpp
+RCa03384
+
+# Local runtime config
+SysMon.cfg
+
+# Internal agent/SDD workspace
+.superpowers/
+docs/superpowers/
+AGENTS.md
