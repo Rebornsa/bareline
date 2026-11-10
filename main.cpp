@@ -8,7 +8,7 @@
 #include "tray.h"
 #include "interaction.h"
 
-static constexpr const char* WINDOW_CLASS = "SysMonOverlay";
+static constexpr const char* WINDOW_CLASS = "BarelineOverlay";
 static AppConfig s_config;
 static bool s_visible = true;
 static InteractionManager* s_pInteraction = nullptr;
@@ -32,7 +32,8 @@ static void RefreshAndRender(HWND hwnd) {
 static INT_PTR CALLBACK FontSizeDlgProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
-        int curSize = (int)(INT_PTR)GetWindowLongPtrA(hDlg, DWLP_USER);
+        int curSize = (int)(INT_PTR)lp;
+        if (curSize < 6 || curSize > 72) curSize = 12;
         char buf[16];
         sprintf_s(buf, "%d", curSize);
         SetDlgItemTextA(hDlg, IDC_FONT_EDIT, buf);
@@ -59,11 +60,17 @@ static INT_PTR CALLBACK FontSizeDlgProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM l
     return FALSE;
 }
 
-static void GetDefaultPosition(int& x, int& y) {
-    RECT wa;
-    SystemParametersInfoA(SPI_GETWORKAREA, 0, &wa, 0);
-    x = wa.left + 4;
-    y = wa.top;
+// Place the bar at the top-left of the work area of the given monitor.
+static void GetDefaultPosition(HMONITOR hMon, int& x, int& y) {
+    x = 4; y = 0;
+    MONITORINFO mi = { sizeof(mi) };
+    if (hMon && GetMonitorInfoW(hMon, &mi)) {
+        x = mi.rcWork.left + 4;
+        y = mi.rcWork.top;
+    } else {
+        RECT wa;
+        if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0)) { x = wa.left + 4; y = wa.top; }
+    }
 }
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -125,7 +132,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDM_LOCK:       s_config.positionLocked = !s_config.positionLocked; SaveConfig(s_config); break;
         case IDM_RESETPOS: {
             int x, y;
-            GetDefaultPosition(x, y);
+            GetDefaultPosition(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), x, y);
             SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             s_config.windowX = x;
             s_config.windowY = y;
@@ -160,6 +167,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                              if (s_visible) RefreshAndRender(hwnd); break;
         }
         return 0;
+    case WM_DISPLAYCHANGE: {
+        // A monitor was added/removed or a resolution changed: if the bar is no
+        // longer on any monitor, bring it back to a visible work area.
+        RECT rc; GetWindowRect(hwnd, &rc);
+        if (!MonitorFromRect(&rc, MONITOR_DEFAULTTONULL)) {
+            int x, y;
+            GetDefaultPosition(MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY), x, y);
+            SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            s_config.windowX = x;
+            s_config.windowY = y;
+            SaveConfig(s_config);
+        }
+        RefreshAndRender(hwnd);
+        return 0;
+    }
     case WM_DPICHANGED: {
         RECT* prc = (RECT*)lp;
         SetWindowPos(hwnd, nullptr, prc->left, prc->top,
@@ -183,10 +205,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
-    // Single instance
-    HANDLE hMutex = CreateMutexA(nullptr, TRUE, "Global\\SysMon_SingleInstance");
+    // Single instance (per session, not machine-wide).
+    HANDLE hMutex = CreateMutexW(nullptr, TRUE, L"Local\\Bareline_SingleInstance");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        MessageBoxA(nullptr, "SysMon is already running.", "SysMon", MB_OK | MB_ICONINFORMATION);
+        MessageBoxA(nullptr, "Bareline is already running.", "Bareline", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
 
@@ -196,7 +218,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     WNDCLASSEXA wc = { sizeof(wc) };
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
-    wc.hIcon = LoadIconA(hInstance, MAKEINTRESOURCEA(IDI_SYSMON));
+    wc.hIcon = LoadIconA(hInstance, MAKEINTRESOURCEA(IDI_APP));
     wc.hCursor = LoadCursorA(nullptr, MAKEINTRESOURCEA(IDC_ARROW));
     wc.lpszClassName = WINDOW_CLASS;
     RegisterClassExA(&wc);
@@ -204,12 +226,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     int x = s_config.windowX, y = s_config.windowY;
     RECT savedRect = { x, y, x + 260, y + 100 };
     if (x < 0 || !MonitorFromRect(&savedRect, MONITOR_DEFAULTTONULL)) {
-        GetDefaultPosition(x, y);
+        GetDefaultPosition(MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY), x, y);
     }
 
     HWND hwnd = CreateWindowExA(
         WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW,
-        WINDOW_CLASS, "SysMon",
+        WINDOW_CLASS, "Bareline",
         WS_POPUP, x, y, 260, 100,
         nullptr, nullptr, hInstance, nullptr);
 

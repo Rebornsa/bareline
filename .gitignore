@@ -28,10 +28,12 @@ test_pdh.cpp
 tsta.cpp
 RCa03384
 
-# Local runtime config
+# Local runtime config (SysMon.cfg is the pre-rename name)
+Bareline.cfg
 SysMon.cfg
 
 # Internal agent/SDD workspace
 .superpowers/
 docs/superpowers/
 AGENTS.md
+.workbuddy/

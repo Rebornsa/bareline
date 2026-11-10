@@ -13,7 +13,6 @@ void InteractionManager::EnterInteractive() {
     SetWindowLongPtrA(m_hwnd, GWL_EXSTYLE, ex);
     SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
                  SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-    MessageBeep(MB_OK);
 }
 
 void InteractionManager::LeaveInteractive() {
@@ -87,7 +86,7 @@ bool InteractionManager::OnLButtonUp() {
 
 bool InteractionManager::OnSetCursor() {
     if (m_interactive) {
-        SetCursor(LoadCursorA(nullptr, MAKEINTRESOURCEA(32646)));
+        SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
         return true;
     }
     return false;

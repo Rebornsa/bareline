@@ -14,7 +14,7 @@ bool CreateTrayIcon(HWND hwnd, HINSTANCE hInst) {
     s_nid.uCallbackMessage = WM_TRAYICON;
     s_nid.hIcon = CreateIconFromResource((PBYTE)s_trayIconData, sizeof(s_trayIconData), TRUE, 0x00030000);
     if (!s_nid.hIcon) s_nid.hIcon = LoadIconA(nullptr, MAKEINTRESOURCEA(IDI_APPLICATION));
-    wcscpy_s(s_nid.szTip, L"SysMon");
+    wcscpy_s(s_nid.szTip, L"Bareline");
     s_trayCreated = Shell_NotifyIconW(NIM_ADD, &s_nid) != FALSE;
     return s_trayCreated;
 }

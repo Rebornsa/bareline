@@ -1,12 +1,20 @@
 #include "config.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
-static constexpr const wchar_t* REG_PATH = L"Software\\SysMon";
+static constexpr const wchar_t* CFG_NAME = L"Bareline.cfg";
+static constexpr const wchar_t* RUN_KEY = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+static constexpr const wchar_t* RUN_VALUE = L"Bareline";
+// Written by builds from before the rename. That entry points at an executable
+// that no longer exists, so it would fail silently at every logon.
+static constexpr const wchar_t* LEGACY_RUN_VALUE = L"SysMon";
 
 static void GetConfigPath(wchar_t* out, size_t size) {
     GetModuleFileNameW(nullptr, out, (DWORD)size);
     wchar_t* slash = wcsrchr(out, L'\\');
     if (slash) *(slash + 1) = 0;
-    wcscat_s(out, size, L"SysMon.cfg");
+    wcscat_s(out, size, CFG_NAME);
 }
 
 static bool FileExists(const wchar_t* path) {
@@ -27,74 +35,11 @@ static DWORD ReadCfgDword(const wchar_t* cfgPath, const char* key, DWORD def) {
     return (DWORD)atoi(eq + 1);
 }
 
-static void WriteCfgDword(const wchar_t* cfgPath, const char* key, DWORD val) {
-    char buf[4096] = {};
-    HANDLE h = CreateFileW(cfgPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD read = 0;
-        ReadFile(h, buf, (DWORD)(sizeof(buf) - 1), &read, nullptr);
-        CloseHandle(h);
-    }
-    char line[128];
-    int lineLen = wsprintfA(line, "%s=%d\r\n", key, val);
-    char* existing = strstr(buf, key);
-    if (existing && (existing == buf || existing[-1] == '\n')) {
-        char* end = strchr(existing, '\n');
-        if (end) end++;
-        char newBuf[4096] = {};
-        size_t prefix = existing - buf;
-        memcpy(newBuf, buf, prefix);
-        strcat_s(newBuf, line);
-        if (end) strcat_s(newBuf, end);
-        h = CreateFileW(cfgPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) {
-            DWORD written = 0;
-            WriteFile(h, newBuf, (DWORD)strlen(newBuf), &written, nullptr);
-            CloseHandle(h);
-        }
-    } else {
-        h = CreateFileW(cfgPath, FILE_APPEND_DATA, 0, nullptr, OPEN_ALWAYS, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) {
-            DWORD written = 0;
-            WriteFile(h, line, (DWORD)lineLen, &written, nullptr);
-            CloseHandle(h);
-        }
-    }
-}
-
-static void WriteCfgInt(const wchar_t* cfgPath, const char* key, int val) {
-    WriteCfgDword(cfgPath, key, (DWORD)val);
-}
-
-static void DeleteRegistryKey() {
-    RegDeleteKeyW(HKEY_CURRENT_USER, REG_PATH);
-}
-
-static void MigrateFromRegistry(const wchar_t* cfgPath) {
+static void DropLegacyAutostart() {
     HKEY hKey;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, REG_PATH, 0, KEY_READ, &hKey) != ERROR_SUCCESS) return;
-    const wchar_t* wNames[] = { L"WindowX", L"WindowY", L"PositionLocked", L"RefreshIntervalMs", L"Opacity", L"FontSize", L"AutoStart" };
-    const char* aNames[] = { "WindowX", "WindowY", "PositionLocked", "RefreshIntervalMs", "Opacity", "FontSize", "AutoStart" };
-    DWORD defs[] = { (DWORD)-1, 0, 0, 500, 70, 9, 0 };
-    DWORD vals[7] = {};
-    for (int i = 0; i < 7; i++) {
-        DWORD sz = sizeof(DWORD);
-        if (RegQueryValueExW(hKey, wNames[i], nullptr, nullptr, (BYTE*)&vals[i], &sz) != ERROR_SUCCESS)
-            vals[i] = defs[i];
-    }
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS) return;
+    RegDeleteValueW(hKey, LEGACY_RUN_VALUE);
     RegCloseKey(hKey);
-    HANDLE h = CreateFileW(cfgPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        for (int i = 0; i < 7; i++) {
-            char line[128];
-            int v = (vals[i] == 0xFFFFFFFF) ? -1 : (int)vals[i];
-            int len = wsprintfA(line, "%s=%d\r\n", aNames[i], v);
-            DWORD written = 0;
-            WriteFile(h, line, (DWORD)len, &written, nullptr);
-        }
-        CloseHandle(h);
-    }
-    DeleteRegistryKey();
 }
 
 AppConfig LoadConfig() {
@@ -107,7 +52,10 @@ AppConfig LoadConfig() {
     cfg.autoStart = false;
     wchar_t cfgPath[MAX_PATH];
     GetConfigPath(cfgPath, MAX_PATH);
-    if (!FileExists(cfgPath)) MigrateFromRegistry(cfgPath);
+    // No settings file yet means this is the first run of this build, so it is
+    // also the one chance to clear the stale autostart entry left by the old
+    // name. Doing it here keeps the registry untouched on every later launch.
+    if (!FileExists(cfgPath)) DropLegacyAutostart();
     if (!FileExists(cfgPath)) return cfg;
     cfg.windowX = (int)ReadCfgDword(cfgPath, "WindowX", (DWORD)-1);
     cfg.windowY = (int)ReadCfgDword(cfgPath, "WindowY", 0);
@@ -126,29 +74,39 @@ AppConfig LoadConfig() {
 void SaveConfig(const AppConfig& cfg) {
     wchar_t cfgPath[MAX_PATH];
     GetConfigPath(cfgPath, MAX_PATH);
-    if (!FileExists(cfgPath)) {
-        HANDLE h = CreateFileW(cfgPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    }
-    WriteCfgInt(cfgPath, "WindowX", cfg.windowX);
-    WriteCfgInt(cfgPath, "WindowY", cfg.windowY);
-    WriteCfgInt(cfgPath, "PositionLocked", cfg.positionLocked ? 1 : 0);
-    WriteCfgInt(cfgPath, "RefreshIntervalMs", cfg.refreshIntervalMs);
-    WriteCfgInt(cfgPath, "Opacity", cfg.opacity);
-    WriteCfgInt(cfgPath, "FontSize", cfg.fontSize);
-    WriteCfgInt(cfgPath, "AutoStart", cfg.autoStart ? 1 : 0);
+
+    // One buffer, one write. The previous version rewrote the whole file once
+    // per key (seven read/modify/write round trips for a single change).
+    char text[512];
+    int len = sprintf_s(text,
+        "WindowX=%d\r\n"
+        "WindowY=%d\r\n"
+        "PositionLocked=%d\r\n"
+        "RefreshIntervalMs=%d\r\n"
+        "Opacity=%d\r\n"
+        "FontSize=%d\r\n"
+        "AutoStart=%d\r\n",
+        cfg.windowX, cfg.windowY, cfg.positionLocked ? 1 : 0,
+        cfg.refreshIntervalMs, cfg.opacity, cfg.fontSize, cfg.autoStart ? 1 : 0);
+    if (len <= 0) return;
+
+    HANDLE h = CreateFileW(cfgPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteFile(h, text, (DWORD)len, &written, nullptr);
+    CloseHandle(h);
 }
 
 void SetAutoStart(bool enable) {
-    constexpr const wchar_t* RUN_KEY = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
         if (enable) {
             wchar_t path[MAX_PATH];
             GetModuleFileNameW(nullptr, path, MAX_PATH);
-            RegSetValueExW(hKey, L"SysMon", 0, REG_SZ, (BYTE*)path, (DWORD)((wcslen(path) + 1) * sizeof(wchar_t)));
+            RegSetValueExW(hKey, RUN_VALUE, 0, REG_SZ, (BYTE*)path, (DWORD)((wcslen(path) + 1) * sizeof(wchar_t)));
         } else {
-            RegDeleteValueW(hKey, L"SysMon");
+            RegDeleteValueW(hKey, RUN_VALUE);
         }
         RegCloseKey(hKey);
     }

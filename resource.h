@@ -1,6 +1,6 @@
 #pragma once
 
-#define IDI_SYSMON         101
+#define IDI_APP            101
 #define IDR_TRAY_MENU      200
 #define IDM_LOCK           201
 #define IDM_REFRESH_1S     202
@@ -23,5 +23,4 @@
 
 #define WM_TRAYICON        (WM_APP + 1)
 #define TIMER_REFRESH       1
-#define TIMER_HOVER         2
 #define TIMER_HOVER_POLL    3

@@ -9,8 +9,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 cmake --build . --config Release
 echo.
-if exist Release\SysMon.exe (
-    echo Build SUCCESS: Release\SysMon.exe
+if exist Release\Bareline.exe (
+    echo Build SUCCESS: Release\Bareline.exe
 ) else (
     echo Build FAILED. Check errors above.
 )
